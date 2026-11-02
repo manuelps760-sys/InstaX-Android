@@ -123,11 +123,11 @@ public class MainActivity extends Activity {
         }
         String caption = captionField == null ? "" : captionField.getText().toString().trim();
         SharedPreferences prefs = getSharedPreferences("instax_drafts", MODE_PRIVATE);
-        boolean saved = prefs.edit()
+        prefs.edit()
             .putString("media_uri", selectedMedia.toString())
             .putString("caption", caption)
             .putLong("saved_at", System.currentTimeMillis())
-            .apply() == null;
+            .apply();
         Toast.makeText(this, "Draft saved on this device.", Toast.LENGTH_LONG).show();
     }
 
