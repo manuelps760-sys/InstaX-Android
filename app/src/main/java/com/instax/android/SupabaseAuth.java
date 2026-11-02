@@ -80,4 +80,85 @@ final class SupabaseAuth {
         if (response.length() == 0) return new JSONObject();
         return new JSONObject(response.toString());
     }
-}
+
+    static String uploadMedia(String accessToken, String userId, android.content.ContentResolver resolver,
+                              android.net.Uri uri, String mime) throws Exception {
+        String extension;
+        if ("image/jpeg".equals(mime)) extension = "jpg";
+        else if ("image/png".equals(mime)) extension = "png";
+        else if ("image/webp".equals(mime)) extension = "webp";
+        else if ("image/gif".equals(mime)) extension = "gif";
+        else if ("video/mp4".equals(mime)) extension = "mp4";
+        else if ("video/webm".equals(mime)) extension = "webm";
+        else if ("video/quicktime".equals(mime)) extension = "mov";
+        else throw new Exception("Unsupported media type: " + mime);
+        String filename = java.util.UUID.randomUUID().toString() + "." + extension;
+        String path = userId + "/" + filename;
+        HttpURLConnection connection = (HttpURLConnection) new URL(BASE_URL +
+                "/storage/v1/object/instax-media/" + path).openConnection();
+        connection.setRequestMethod("POST");
+        connection.setConnectTimeout(20000);
+        connection.setReadTimeout(90000);
+        connection.setDoOutput(true);
+        connection.setChunkedStreamingMode(65536);
+        connection.setRequestProperty("apikey", PUBLISHABLE_KEY);
+        connection.setRequestProperty("Authorization", "Bearer " + accessToken);
+        connection.setRequestProperty("Content-Type", mime);
+        connection.setRequestProperty("x-upsert", "false");
+        long total = 0;
+        try (InputStream input = resolver.openInputStream(uri);
+             OutputStream output = connection.getOutputStream()) {
+            if (input == null) throw new Exception("Unable to read the selected media.");
+            byte[] buffer = new byte[65536];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                total += count;
+                if (total > 50L * 1024L * 1024L) throw new Exception("Media exceeds the 50 MB upload limit.");
+                output.write(buffer, 0, count);
+            }
+        } catch (Exception error) {
+            connection.disconnect();
+            throw error;
+        }
+        int status = connection.getResponseCode();
+        InputStream stream = status >= 200 && status < 300 ? connection.getInputStream() : connection.getErrorStream();
+        StringBuilder response = new StringBuilder();
+        if (stream != null) try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) response.append(line);
+        }
+        connection.disconnect();
+        if (status < 200 || status >= 300) throw new Exception("Media upload failed (" + status + "): " + response);
+        return BASE_URL + "/storage/v1/object/public/instax-media/" + path;
+    }
+
+    static void publishPost(String accessToken, String userId, String mediaUrl, String mime, String caption) throws Exception {
+        JSONObject post = new JSONObject();
+        post.put("user_id", userId);
+        post.put("media_url", mediaUrl);
+        post.put("media_type", mime != null && mime.startsWith("video/") ? "video" : "image");
+        post.put("caption", caption == null ? "" : caption);
+        request("/rest/v1/posts", "POST", post, accessToken);
+    }
+
+    static org.json.JSONArray loadFeed(String accessToken) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(BASE_URL +
+                "/rest/v1/posts?select=id,user_id,media_url,media_type,caption,created_at&order=created_at.desc&limit=30").openConnection();
+        connection.setRequestMethod("GET");
+        connection.setConnectTimeout(15000);
+        connection.setReadTimeout(20000);
+        connection.setRequestProperty("apikey", PUBLISHABLE_KEY);
+        connection.setRequestProperty("Authorization", "Bearer " +
+                (accessToken == null || accessToken.isEmpty() ? PUBLISHABLE_KEY : accessToken));
+        int status = connection.getResponseCode();
+        InputStream stream = status >= 200 && status < 300 ? connection.getInputStream() : connection.getErrorStream();
+        StringBuilder response = new StringBuilder();
+        if (stream != null) try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) response.append(line);
+        }
+        connection.disconnect();
+        if (status < 200 || status >= 300) throw new Exception("Feed request failed (" + status + "): " + response);
+        return new org.json.JSONArray(response.toString());
+    }
+\n}\n
