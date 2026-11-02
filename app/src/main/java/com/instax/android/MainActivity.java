@@ -111,7 +111,7 @@ public class MainActivity extends Activity {
         String mime = getContentResolver().getType(selectedMedia);
         String kind = mime != null && mime.startsWith("video/") ? "Video selected" : "Photo selected";
         if (selectedMediaLabel != null) {
-            selectedMediaLabel.setText(kind + "\\n" + selectedMedia);
+            selectedMediaLabel.setText(kind + "\n" + selectedMedia);
         }
         Toast.makeText(this, kind, Toast.LENGTH_SHORT).show();
     }
