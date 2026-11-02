@@ -161,5 +161,5 @@ final class SupabaseAuth {
         if (status < 200 || status >= 300) throw new Exception("Feed request failed (" + status + "): " + response);
         return new org.json.JSONArray(response.toString());
     }
-\
+
 }
