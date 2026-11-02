@@ -165,6 +165,7 @@ public class MainActivity extends Activity {
                 addSpace(content, 8);
                 addCard("Welcome to InstaX", "Your feed is ready. Sign-in and backend services will connect real posts, creators, likes and comments.");
                 addCard("Discover creators", "Use Search to find people and explore public profiles.");
+                loadFeedIntoHome();
                 break;
             case "Search":
                 content.addView(text("DISCOVER", 18, true));
@@ -188,6 +189,8 @@ public class MainActivity extends Activity {
                 captionField.setMinLines(3);
                 content.addView(captionField);
                 addSpace(content, 10);
+                content.addView(button("PUBLISH POST", this::publishPost));
+                addSpace(content, 6);
                 content.addView(button("SAVE LOCAL DRAFT", this::saveDraft));
                 addSpace(content, 8);
                 addCard("Posting status", "Drafts are stored locally. Publishing to a shared feed requires account and cloud-storage setup.");
