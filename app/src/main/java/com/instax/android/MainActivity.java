@@ -246,4 +246,114 @@ public class MainActivity extends Activity {
         root.addView(nav);
         setContentView(root);
     }
-}
+
+    private void authenticate(boolean createAccount) {
+        String email = authEmailField == null ? "" : authEmailField.getText().toString().trim();
+        String password = authPasswordField == null ? "" : authPasswordField.getText().toString();
+        if (email.isEmpty() || password.length() < 6) {
+            Toast.makeText(this, "Enter a valid email and a password of at least 6 characters.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        Toast.makeText(this, createAccount ? "Creating account..." : "Signing in...", Toast.LENGTH_SHORT).show();
+        network.execute(() -> {
+            try {
+                JSONObject session = createAccount ? SupabaseAuth.signUp(email, password) : SupabaseAuth.signIn(email, password);
+                String access = session.optString("access_token", "");
+                JSONObject user = session.optJSONObject("user");
+                if (user == null) user = session;
+                String userId = user.optString("id", "");
+                if (access.isEmpty() || userId.isEmpty()) {
+                    runOnUiThread(() -> Toast.makeText(this, "Account request completed. If email confirmation is enabled, verify your email and then sign in.", Toast.LENGTH_LONG).show());
+                    return;
+                }
+                SessionVault.save(this, access, session.optString("refresh_token", ""), email, userId);
+                SupabaseAuth.createProfile(access, userId, email);
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "Signed in.", Toast.LENGTH_SHORT).show();
+                    showPage("Profile");
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        });
+    }
+
+    private void publishPost() {
+        if (selectedMedia == null) {
+            Toast.makeText(this, "Choose a photo or video first.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String access = SessionVault.get(this, "access");
+        String userId = SessionVault.get(this, "user_id");
+        if (access == null || access.isEmpty() || userId == null || userId.isEmpty()) {
+            Toast.makeText(this, "Sign in from Profile before publishing.", Toast.LENGTH_LONG).show();
+            showPage("Profile");
+            return;
+        }
+        final Uri media = selectedMedia;
+        final String mime = getContentResolver().getType(media);
+        final String caption = captionField == null ? "" : captionField.getText().toString().trim();
+        if (mime == null || !(mime.startsWith("image/") || mime.startsWith("video/"))) {
+            Toast.makeText(this, "Select a supported photo or video.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        Toast.makeText(this, "Uploading post...", Toast.LENGTH_SHORT).show();
+        network.execute(() -> {
+            try {
+                String mediaUrl = SupabaseAuth.uploadMedia(access, userId, getContentResolver(), media, mime);
+                SupabaseAuth.publishPost(access, userId, mediaUrl, mime, caption);
+                runOnUiThread(() -> {
+                    selectedMedia = null;
+                    getSharedPreferences("instax_drafts", MODE_PRIVATE).edit().clear().apply();
+                    Toast.makeText(this, "Post published.", Toast.LENGTH_LONG).show();
+                    showPage("Home");
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        });
+    }
+
+    private void loadFeedIntoHome() {
+        String access = SessionVault.get(this, "access");
+        network.execute(() -> {
+            try {
+                org.json.JSONArray posts = SupabaseAuth.loadFeed(access);
+                runOnUiThread(() -> {
+                    if (!"Home".equals(active)) return;
+                    if (posts.length() == 0) {
+                        addCard("No posts yet", "Be the first to share a photo or video.");
+                        return;
+                    }
+                    for (int i = 0; i < posts.length(); i++) {
+                        JSONObject post = posts.optJSONObject(i);
+                        if (post == null) continue;
+                        String kind = "video".equals(post.optString("media_type")) ? "VIDEO POST" : "PHOTO POST";
+                        String caption = post.optString("caption", "");
+                        addCard(kind, caption.isEmpty() ? "Shared on InstaX" : caption);
+                        String url = post.optString("media_url", "");
+                        if (!url.isEmpty()) {
+                            Button open = button("OPEN MEDIA", () -> {
+                                try {
+                                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                                    startActivity(intent);
+                                } catch (Exception ignored) {
+                                    Toast.makeText(this, "No app can open this media.", Toast.LENGTH_SHORT).show();
+                                }
+                            });
+                            content.addView(open);
+                            addSpace(content, 10);
+                        }
+                    }
+                });
+            } catch (Exception error) {
+                android.util.Log.w("InstaX", "Feed load failed: " + error.getMessage());
+            }
+        });
+    }
+
+    @Override protected void onDestroy() {
+        super.onDestroy();
+        network.shutdown();
+    }
+\n}\n
