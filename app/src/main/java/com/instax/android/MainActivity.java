@@ -2,6 +2,9 @@ package com.instax.android;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.net.Uri;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.view.Gravity;
@@ -14,11 +17,15 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 public class MainActivity extends Activity {
+    private static final int PICK_MEDIA = 4102;
     private final int bg = Color.rgb(16, 19, 27);
     private final int panel = Color.rgb(27, 32, 44);
     private final int accent = Color.rgb(91, 140, 255);
     private LinearLayout root, content, nav;
     private String active = "Home";
+    private Uri selectedMedia;
+    private EditText captionField;
+    private TextView selectedMediaLabel;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -52,11 +59,9 @@ public class MainActivity extends Activity {
         LinearLayout card = column();
         card.setBackgroundColor(panel);
         card.setPadding(16, 14, 16, 14);
-        TextView heading = text(title, 16, true);
-        card.addView(heading);
+        card.addView(text(title, 16, true));
         addSpace(card, 8);
-        TextView detail = text(body, 14, false);
-        card.addView(detail);
+        card.addView(text(body, 14, false));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.bottomMargin = 14;
         content.addView(card, lp);
@@ -80,6 +85,50 @@ public class MainActivity extends Activity {
         e.setPadding(14, 8, 14, 8);
         e.setBackgroundTintList(android.content.res.ColorStateList.valueOf(accent));
         return e;
+    }
+
+    private void openMediaPicker() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*"});
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try {
+            startActivityForResult(intent, PICK_MEDIA);
+        } catch (Exception e) {
+            Toast.makeText(this, "No compatible media picker is available.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != PICK_MEDIA || resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        selectedMedia = data.getData();
+        try {
+            getContentResolver().takePersistableUriPermission(selectedMedia,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (SecurityException ignored) { }
+        String mime = getContentResolver().getType(selectedMedia);
+        String kind = mime != null && mime.startsWith("video/") ? "Video selected" : "Photo selected";
+        if (selectedMediaLabel != null) {
+            selectedMediaLabel.setText(kind + "\\n" + selectedMedia);
+        }
+        Toast.makeText(this, kind, Toast.LENGTH_SHORT).show();
+    }
+
+    private void saveDraft() {
+        if (selectedMedia == null) {
+            Toast.makeText(this, "Select a photo or video first.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String caption = captionField == null ? "" : captionField.getText().toString().trim();
+        SharedPreferences prefs = getSharedPreferences("instax_drafts", MODE_PRIVATE);
+        boolean saved = prefs.edit()
+            .putString("media_uri", selectedMedia.toString())
+            .putString("caption", caption)
+            .putLong("saved_at", System.currentTimeMillis())
+            .apply() == null;
+        Toast.makeText(this, "Draft saved on this device.", Toast.LENGTH_LONG).show();
     }
 
     private void showPage(String page) {
@@ -114,20 +163,28 @@ public class MainActivity extends Activity {
             case "Search":
                 content.addView(text("DISCOVER", 18, true));
                 addSpace(content, 8);
-                EditText search = field("Search people and posts");
-                content.addView(search);
+                content.addView(field("Search people and posts"));
                 addSpace(content, 12);
                 addCard("Explore", "Creator discovery and hashtag search will appear here when the backend is connected.");
                 break;
             case "Create":
                 content.addView(text("CREATE A POST", 18, true));
                 addSpace(content, 8);
-                addCard("Share a moment", "Choose a photo or video to prepare a post. Uploading will be enabled after media storage is configured.");
-                content.addView(button("SELECT MEDIA", () ->
-                    Toast.makeText(this, "Media picker will be connected in the next build.", Toast.LENGTH_SHORT).show()));
-                addSpace(content, 12);
-                EditText caption = field("Write a caption...");
-                content.addView(caption);
+                addCard("Share a moment", "Choose a photo or video, add a caption, and save a draft on this device.");
+                content.addView(button("CHOOSE PHOTO OR VIDEO", this::openMediaPicker));
+                addSpace(content, 10);
+                selectedMediaLabel = text(selectedMedia == null ? "No media selected" : "Selected: " + selectedMedia, 12, false);
+                selectedMediaLabel.setTextColor(Color.LTGRAY);
+                content.addView(selectedMediaLabel);
+                addSpace(content, 10);
+                captionField = field("Write a caption...");
+                captionField.setSingleLine(false);
+                captionField.setMinLines(3);
+                content.addView(captionField);
+                addSpace(content, 10);
+                content.addView(button("SAVE LOCAL DRAFT", this::saveDraft));
+                addSpace(content, 8);
+                addCard("Posting status", "Drafts are stored locally. Publishing to a shared feed requires account and cloud-storage setup.");
                 break;
             case "Activity":
                 content.addView(text("ACTIVITY", 18, true));
