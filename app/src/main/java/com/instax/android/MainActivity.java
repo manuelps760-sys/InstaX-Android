@@ -15,6 +15,10 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.text.InputType;
+import org.json.JSONObject;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final int PICK_MEDIA = 4102;
@@ -26,6 +30,8 @@ public class MainActivity extends Activity {
     private Uri selectedMedia;
     private EditText captionField;
     private TextView selectedMediaLabel;
+    private EditText authEmailField, authPasswordField;
+    private final ExecutorService network = Executors.newSingleThreadExecutor();
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -194,9 +200,28 @@ public class MainActivity extends Activity {
             case "Profile":
                 content.addView(text("YOUR PROFILE", 18, true));
                 addSpace(content, 8);
-                addCard("Set up your profile", "Add a profile photo, username and bio after creating your account.");
-                content.addView(button("SIGN IN / CREATE ACCOUNT", () ->
-                    Toast.makeText(this, "Authentication will be connected with Supabase.", Toast.LENGTH_SHORT).show()));
+                String signedInEmail = SessionVault.get(this, "email");
+                if (signedInEmail != null) {
+                    addCard("SIGNED IN", signedInEmail);
+                    content.addView(button("SIGN OUT", () -> {
+                        SessionVault.clear(this);
+                        Toast.makeText(this, "Signed out.", Toast.LENGTH_SHORT).show();
+                        showPage("Profile");
+                    }));
+                } else {
+                    addCard("Create your InstaX account", "Use your email address and a password. Email confirmation may be required before your first sign-in.");
+                    authEmailField = field("Email address");
+                    authEmailField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+                    content.addView(authEmailField);
+                    addSpace(content, 8);
+                    authPasswordField = field("Password (at least 6 characters)");
+                    authPasswordField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+                    content.addView(authPasswordField);
+                    addSpace(content, 10);
+                    content.addView(button("SIGN IN", () -> authenticate(false)));
+                    addSpace(content, 6);
+                    content.addView(button("CREATE ACCOUNT", () -> authenticate(true)));
+                }
                 addSpace(content, 10);
                 addCard("Posts     0          Followers     0          Following     0", "Your profile grid will appear here.");
                 break;
