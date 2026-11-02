@@ -1,1 +1,1 @@
-# InstaX-Android
+# InstaX Android starter
